@@ -15,6 +15,7 @@ RgbColor red(colorSaturation, 0, 0);
 RgbColor green(0, colorSaturation, 0);
 RgbColor blue(0, 0, colorSaturation);
 RgbColor white(colorSaturation);
+RgbColor purple(64,0,64);
 RgbColor black(0);
 
 HslColor hslRed(red);
@@ -23,11 +24,7 @@ HslColor hslBlue(blue);
 HslColor hslWhite(white);
 HslColor hslBlack(black);
 
-int a=169;
-int b=168;
-int c=179;
-int d=19;
-
+// Screen Map
 int VerticalMap[24][12] = {
   {143,  97,  95,  49,  47,   1,   1,  47,  49,  95,  97, 143},
   {142,  98,  94,  50,  46,   2,   2,  46,  50,  94,  98, 142},
@@ -76,9 +73,25 @@ void setup()
 
 }
 
+/***
+ * 
+ */
+void DrawHLine(int y, RgbColor color)
+{
+  for(int x=0;x<12;x++){
+    SetColor(x,y,color);
+  }
+}
+
+void DrawVLine(int x, RgbColor color)
+{
+  for(int y=0;y<23;y++){
+    SetColor(x,y,color);
+  }
+}
 
 
-/**
+/***
  * This method sets pixel color based on (X, Y) coordinates 
  * for a pixel on the matrix in vertical orientation. 
  */
@@ -97,21 +110,31 @@ void SetColor(int x, int y, RgbColor color)
   }
 }
 
+/***
+ * This method refreshes both strips.
+ */
 void Refresh() {
   strip1.Show();
   strip2.Show();
 }
 
+
+// Starting position for sample program
 int x = 0;
 int y = 0;
 
-void loop()
-{
+void OneByOne() {
     SetColor(x, y, red);
     Refresh();
     delay(50);
     SetColor(x, y, black);
     Refresh();
+
+    delay(10);
+
+    //Serial.println("X=");
+    //Serial.println(x);
+
 
     if (x<11) {
       x++;
@@ -124,6 +147,37 @@ void loop()
       x = 0;
       y = 0;
     }
+}
+
+void LineByLine() {
+    DrawVLine(x, purple);
+    DrawHLine(y, purple);
+    Refresh();
+    delay(50);
+    DrawVLine(x, black);
+    DrawHLine(y, black);
+    Refresh();
+
+    delay(10);
+
+    if (x<11) {
+      x++;
+    }
+    else {
+      x = 0;
+    }  
+
+    if (y<22) {
+      y++;
+    }
+    else {
+      y = 0;
+    }  
+}
+
+void loop()
+{
+    LineByLine();
 
 }
 

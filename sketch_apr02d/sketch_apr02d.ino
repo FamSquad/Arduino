@@ -89,9 +89,7 @@ void setup()
 void loop()
 {
 
-for(int i=0;i<5;i++);
-{
-  delay(1000);
+  delay(100);
 
     Serial.println("Colors R, G, B, W...");
 
@@ -108,7 +106,7 @@ for(int i=0;i<5;i++);
     strip.Show();
 
 
-    delay(1000);
+    delay(100);
 
     Serial.println("Off ...");
 
@@ -124,8 +122,7 @@ for(int i=0;i<5;i++);
     c = c+1;
     d = d-1;
    
-    delay(1);
-}
+
 }
 
     /*Serial.println("HSL Colors R, G, B, W...");

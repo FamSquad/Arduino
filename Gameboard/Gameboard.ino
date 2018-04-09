@@ -5,8 +5,8 @@ const uint16_t PixelCount = 150;
 const uint8_t PixelPin1 = 13;  // make sure to set this to the correct pin, ignored for Esp8266
 const uint8_t PixelPin2 = 12;  // make sure to set this to the correct pin, ignored for Esp8266
 
-#define colorSaturation 128
-#define colorHalf 64
+#define colorSaturation 64
+#define colorHalf 32
 
 // define both strips
 NeoPixelBus<NeoGrbFeature, Neo800KbpsMethod> strip1(PixelCount, PixelPin1);
@@ -200,16 +200,17 @@ void setup()
   //initialize the well
   for (int i=0;i<24;i++){
     for (int j=0;j<12;j++){
-      Well[i][j] = black;
+      Well[j][i] = black;
     }
   }
 
  // comment out for now - wall sides
  // for (int w=0;w<24;w++){
- //   Well[w][0]=gray;
- //   Well[w][11]=gray;
+ //   SetColor(0, w, gray);
+ //   SetColor(11, w, gray);
  // }
-  
+
+  delay(200);
 
   strip1.Show();
   strip2.Show();
@@ -219,7 +220,7 @@ void setup()
 
 }
 
-void RepaintWell() 
+void Repaint() 
 {
   for (int i=0;i<24;i++){
     for (int j=0;j<12;j++){
@@ -228,6 +229,7 @@ void RepaintWell()
   }    
   Refresh();
 }
+
 
 /***
 
@@ -332,7 +334,7 @@ void LineByLine() {
   }
 }
 
-int t = 0;
+int currentPiece = 0;
 int rotation = 0;
 RgbColor currentColor = red;
 
@@ -342,16 +344,59 @@ const int startY = 19;
 int currentPosX = startX;
 int currentPosY = startY;
 
+
+bool CollidesAt(int x, int y, int rotation) 
+{
+  for (int i=0; i<4; i++) {
+    uint8_t* p = Tetraminos[currentPiece][rotation][i];
+    int px = p[0] + x;
+    int py = p[1] + y;
+    Serial.print("currentPiece=");
+    Serial.println(currentPiece);
+    Serial.print("i=");
+    Serial.println(i);
+    Serial.print("px=");
+    Serial.println(px);
+    Serial.print("py=");
+    Serial.println(py);
+    
+    if (Well[py][px] != black) {
+      Serial.print("collision!");
+      return true;
+    }
+  }
+  return false;
+}
+
 void DrawPoints()
 {
-  // draw new piece at current position
-  for (int p = 0; p < 4; p++) {
-    //        uint8_t point[2] = Tetraminos[t][rotation][p];
-    int px = currentPosX + Tetraminos[t][rotation][p][0];
-    int py = currentPosY + Tetraminos[t][rotation][p][1];
+//  Refresh();
+
+  delay(300);
+
+  // check for collision
+  if (currentPosY>0 && !CollidesAt(currentPosX, currentPosY-1, rotation)) {
+
+    // blacken the piece at the current position
+    for (int p = 0; p < 4; p++) {
+      //uint8_t point[2] = Tetraminos[currentPiece][rotation][p];
+      int px = currentPosX + Tetraminos[currentPiece][rotation][p][0];
+      int py = currentPosY + Tetraminos[currentPiece][rotation][p][1];
+      SetColor(px, py, black);
+    }
+
+    currentPosY--;
+    // draw new piece at the new position
+    for (int p = 0; p < 4; p++) {
+      //        uint8_t point[2] = Tetraminos[currentPiece][rotation][p];
+      int px = currentPosX + Tetraminos[currentPiece][rotation][p][0];
+      int py = currentPosY + Tetraminos[currentPiece][rotation][p][1];
+
     /*
-            Serial.print("t=");
-            Serial.println(t);
+            Serial.print("currentPosX=");
+            Serial.println(currentPosX);
+            Serial.print("currentPosY=");
+            Serial.println(currentPosY);
             Serial.print("p=");
             Serial.println(p);
 
@@ -363,36 +408,31 @@ void DrawPoints()
 
             Serial.println("-------------------------");
     */
-    Well[py][px] = currentColor;
-  }
-  RepaintWell();
-
-  delay(100);
-
-  // blacken the piece at the current position
-  for (int p = 0; p < 4; p++) {
-    //uint8_t point[2] = Tetraminos[t][rotation][p];
-    int px = currentPosX + Tetraminos[t][rotation][p][0];
-    int py = currentPosY + Tetraminos[t][rotation][p][1];
-
-    Well[py][px] = black;
-  }
-  RepaintWell();
-
-  // did we reach the bottom of the well?
-  if (currentPosY > 0)
-  {
-    currentPosY--;
+      SetColor(px, py, currentColor);
+    }
+    
+    Refresh();
   }
   else {
-    // start at the top
+    // fix to wall
+    for (int p = 0; p < 4; p++) {
+      //        uint8_t point[2] = Tetraminos[currentPiece][rotation][p];
+      int px = currentPosX + Tetraminos[currentPiece][rotation][p][0];
+      int py = currentPosY + Tetraminos[currentPiece][rotation][p][1];
+      Well[py][px] = currentColor;
+    }
+    
+    
+    // start with a new piece
     currentPosY = startY;
+    currentPosX = random(1, 7);
+    
     // pick next piece
-    if (t < 6) {
-      t++;
+    if (currentPiece < 6) {
+      currentPiece++;
     }
     else {
-      t = 0;
+      currentPiece = 0;
     }
     // set rotation to random value
     rotation = random(0, 3);

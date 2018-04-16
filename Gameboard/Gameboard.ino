@@ -6,7 +6,7 @@ const uint16_t PixelCount = 150;
 const uint8_t PixelPin1 = 13;  // make sure to set this to the correct pin, ignored for Esp8266
 const uint8_t PixelPin2 = 12;  // make sure to set this to the correct pin, ignored for Esp8266
 
-#define BORDERS true
+#define BORDERS false
 
 #define MAX_X 11
 #define MAX_Y 23
@@ -21,8 +21,11 @@ const uint8_t PixelPin2 = 12;  // make sure to set this to the correct pin, igno
 #define RMT_FFRIGHT 0xFFC23D
 #define RMT_MINUS 0xFFA857
 #define RMT_PLUS 0xFF906F
+#define RMT_PLAY 0xFF22DD
+#define RMT_EQ 0xFFE01F
+#define RMT_MODE 0xFF629D
 
-#define TETRIS_DELAY 1000
+#define DEFAULT_DELAY 1000
 
 
 // define both strips
@@ -142,70 +145,7 @@ uint8_t Tetraminos[7][4][4][2] = {
     { {0, 0}, {1, 0}, {1, 1}, {2, 1} },
     { {1, 0}, {0, 1}, {1, 1}, {0, 2} }
   }
-
-
 };
-/*
-  Point* Tetraminos[3][4][4] = {
-
-
-      // I-Piece
-      {
-        { new Point(0, 1), new Point(1, 1), new Point(2, 1), new Point(3, 1) },
-        { new Point(1, 0), new Point(1, 1), new Point(1, 2), new Point(1, 3) },
-        { new Point(0, 1), new Point(1, 1), new Point(2, 1), new Point(3, 1) },
-        { new Point(1, 0), new Point(1, 1), new Point(1, 2), new Point(1, 3) }
-      },
-
-      // J-Piece
-      {
-        { new Point(0, 1), new Point(1, 1), new Point(2, 1), new Point(2, 0) },
-        { new Point(1, 0), new Point(1, 1), new Point(1, 2), new Point(2, 2) },
-        { new Point(0, 1), new Point(1, 1), new Point(2, 1), new Point(0, 2) },
-        { new Point(1, 0), new Point(1, 1), new Point(1, 2), new Point(0, 0) }
-      },
-
-      // L-Piece
-      {
-        { new Point(0, 1), new Point(1, 1), new Point(2, 1), new Point(2, 2) },
-        { new Point(1, 0), new Point(1, 1), new Point(1, 2), new Point(0, 2) },
-        { new Point(0, 1), new Point(1, 1), new Point(2, 1), new Point(0, 0) },
-        { new Point(1, 0), new Point(1, 1), new Point(1, 2), new Point(2, 0) }
-      },
-
-      // O-Piece
-      {
-        { new Point(0, 0), new Point(0, 1), new Point(1, 0), new Point(1, 1) },
-        { new Point(0, 0), new Point(0, 1), new Point(1, 0), new Point(1, 1) },
-        { new Point(0, 0), new Point(0, 1), new Point(1, 0), new Point(1, 1) },
-        { new Point(0, 0), new Point(0, 1), new Point(1, 0), new Point(1, 1) }
-      },
-
-      // S-Piece
-      {
-        { new Point(1, 0), new Point(2, 0), new Point(0, 1), new Point(1, 1) },
-        { new Point(0, 0), new Point(0, 1), new Point(1, 1), new Point(1, 2) },
-        { new Point(1, 0), new Point(2, 0), new Point(0, 1), new Point(1, 1) },
-        { new Point(0, 0), new Point(0, 1), new Point(1, 1), new Point(1, 2) }
-      },
-
-      // T-Piece
-      {
-        { new Point(1, 0), new Point(0, 1), new Point(1, 1), new Point(2, 1) },
-        { new Point(1, 0), new Point(0, 1), new Point(1, 1), new Point(1, 2) },
-        { new Point(0, 1), new Point(1, 1), new Point(2, 1), new Point(1, 2) },
-        { new Point(1, 0), new Point(1, 1), new Point(2, 1), new Point(1, 2) }
-      },
-
-      // Z-Piece
-      {
-        { new Point(0, 0), new Point(1, 0), new Point(1, 1), new Point(2, 1) },
-        { new Point(1, 0), new Point(0, 1), new Point(1, 1), new Point(0, 2) },
-        { new Point(0, 0), new Point(1, 0), new Point(1, 1), new Point(2, 1) },
-        { new Point(1, 0), new Point(0, 1), new Point(1, 1), new Point(0, 2) }
-      }
-  };
-*/
 
 void setup()
 {
@@ -233,14 +173,9 @@ void setup()
     for (int j=0;j<12;j++){
       Well[i][j] = black;
     }
-  }
-
-  // comment out for now - wall sides
-  if (BORDERS) 
-  {
-    for (int w=0;w<24;w++){
-      SetColor(0, w, gray);
-      SetColor(MAX_X, w, gray);
+    if (BORDERS) {
+      Well[i][0] = gray;
+      Well[i][MAX_X] = gray;
     }
   }
 
@@ -256,8 +191,8 @@ void setup()
 
 void Repaint() 
 {
-  for (int i=0;i<24;i++){
-    for (int j=0;j<12;j++){
+  for (int i=0;i<=MAX_Y;i++){
+    for (int j=0;j<=MAX_X;j++){
       SetColor(j, i, Well[i][j]);
     }
   }    
@@ -379,6 +314,14 @@ int currentPosX = startX;
 int currentPosY = startY;
 
 int loopCount = 0;
+int gameDelay = DEFAULT_DELAY;
+unsigned long lastCommand = 0;
+
+// will store last time a piece was moved was updated
+unsigned long previousMillis = 0;      
+// interval at which to move a piece (milliseconds)
+const long interval = DEFAULT_DELAY;   
+
 
 bool CollidesAt(int x, int y, int rotation) 
 {
@@ -391,16 +334,7 @@ bool CollidesAt(int x, int y, int rotation)
       //Serial.println("wall collision!");
       return true;
     }
-/*    
-    Serial.print("currentPiece=");
-    Serial.println(currentPiece);
-    Serial.print("i=");
-    Serial.println(i);
-    Serial.print("px=");
-    Serial.println(px);
-    Serial.print("py=");
-    Serial.println(py);
-*/    
+
     if (Well[py][px] != black) {
       //Serial.println("collision!");
       return true;
@@ -567,48 +501,23 @@ void DeleteRow(int row) {
   }
 }
 
-
-void DrawPoints()
+void DropPiece()
 {
-  if (myReceiver.getResults()) {
-    myDecoder.decode();           //Decode it
-    myDecoder.dumpResults(false);  //Now print results. Use false for less detail
-
-    
-    if (myDecoder.value == 0xFFFFFFFF) {
-        // do nothing - this is a filler value
-      } 
-      else if (myDecoder.value == RMT_POWER) {
-        ResetGame();
-        NewPiece();
-      }     
-      else if (myDecoder.value == RMT_FFLEFT) {
-        MoveX(-1);
-      }     
-      else if (myDecoder.value == RMT_FFRIGHT) {
-        MoveX(1);
-      }     
-      else if (myDecoder.value == RMT_ROTATE) {
-        Rotate();
-      }     
-
-      myReceiver.enableIRIn();      //Restart receiver
+  while (!CollidesAt(currentPosX, currentPosY-1, rotation)) {
+    MoveY(-1);    
+    //currentPosY--;
   }
+}
 
 
-  //Serial.println(loopCount++);
-  //Serial.print("currentPosY=");
-  //Serial.println(currentPosY);
-
+void UpdateGame()
+{
   // check for collision
   if (!CollidesAt(currentPosX, currentPosY-1, rotation)) {
-    //Serial.println("move");
     MoveY(-1);    
     Refresh();
   }
   else {
-    //Serial.println("next");
-    
     if (currentPosY == startY) {
       // we are stuck on new piece!!! game over
       // for now we will do reset
@@ -628,13 +537,58 @@ void DrawPoints()
       NewPiece();
     }
   }
-  
+}
+
+void HandleCommand(unsigned long command)
+{
+  if (command == RMT_POWER) {
+    ResetGame();
+    NewPiece();
+  }     
+  else if (command == RMT_FFLEFT) {
+    MoveX(-1);
+    Refresh();
+  }     
+  else if (command == RMT_FFRIGHT) {
+    MoveX(1);
+    Refresh();
+  }     
+  else if (command == RMT_ROTATE) {
+    Rotate();
+    Refresh();
+  }     
+  else if (command == RMT_PLAY) {
+    DropPiece();
+    Refresh();
+  }     
 }
 
 void loop()
 {
-  delay(TETRIS_DELAY);
-  DrawPoints();
+  unsigned long currentMillis = millis();
+  unsigned long handledCommand = 0;
+
+  if (myReceiver.getResults()) {
+    myDecoder.decode();           //Decode it
+    myDecoder.dumpResults(false);  //Now print results. Use false for less detail
+
+    unsigned long receivedCommand = myDecoder.value;
+    if (receivedCommand == 0xFFFFFFFF && lastCommand != 0xFFFFFFFF) {
+      // repeat last command
+      receivedCommand = lastCommand;
+    } else {
+      lastCommand = receivedCommand;
+    }
+    
+    HandleCommand(receivedCommand);
+    myReceiver.enableIRIn();      //Restart receiver
+  }
+
+  
+  if (currentMillis - previousMillis >= interval) {
+    previousMillis = currentMillis;
+    UpdateGame();
+  }
 
 }
 

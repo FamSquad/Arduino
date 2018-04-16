@@ -1,16 +1,40 @@
 #include <NeoPixelBus.h>
+#include <IRLibAll.h>
 #include "Point.h"
 
 const uint16_t PixelCount = 150;
 const uint8_t PixelPin1 = 13;  // make sure to set this to the correct pin, ignored for Esp8266
 const uint8_t PixelPin2 = 12;  // make sure to set this to the correct pin, ignored for Esp8266
 
+#define BORDERS true
+
+#define MAX_X 11
+#define MAX_Y 23
+#define TRIM_X 1
+#define TRIM_Y 0
+
 #define colorSaturation 64
 #define colorHalf 32
+#define RMT_POWER 0xFFA25D
+#define RMT_ROTATE 0xFF9867
+#define RMT_FFLEFT 0xFF02FD
+#define RMT_FFRIGHT 0xFFC23D
+#define RMT_MINUS 0xFFA857
+#define RMT_PLUS 0xFF906F
+
+#define TETRIS_DELAY 1000
+
 
 // define both strips
 NeoPixelBus<NeoGrbFeature, Neo800KbpsMethod> strip1(PixelCount, PixelPin1);
 NeoPixelBus<NeoGrbFeature, Neo800KbpsMethod> strip2(PixelCount, PixelPin2);
+
+//Create a receiver object to listen on pin 10
+IRrecv myReceiver(10);
+
+//Create a decoder object 
+IRdecode myDecoder;   
+
 
 // define helpful colors
 RgbColor red(colorSaturation, 0, 0);
@@ -21,7 +45,7 @@ RgbColor cyan(0, colorHalf, colorHalf);
 RgbColor orange(colorSaturation, colorHalf, 0);
 RgbColor yellow(colorHalf, colorHalf, 0);
 RgbColor magenta(colorSaturation, 0, colorSaturation);
-RgbColor gray(4);
+RgbColor gray(8);
 RgbColor white(colorSaturation);
 RgbColor black(0);
 
@@ -185,12 +209,19 @@ uint8_t Tetraminos[7][4][4][2] = {
 
 void setup()
 {
+  
   Serial.begin(9600);
   while (!Serial); // wait for serial attach
 
   Serial.println();
   Serial.println(F("Initializing..."));
   Serial.flush();
+
+  // initialize random number generator
+  randomSeed(analogRead(0));
+
+  myReceiver.enableIRIn(); // Start the IR receiver
+  Serial.println(F("Ready to receive IR signals"));
 
   // this resets all the neopixels to an off state
   strip1.Begin();
@@ -200,15 +231,18 @@ void setup()
   //initialize the well
   for (int i=0;i<24;i++){
     for (int j=0;j<12;j++){
-      Well[j][i] = black;
+      Well[i][j] = black;
     }
   }
 
- // comment out for now - wall sides
- // for (int w=0;w<24;w++){
- //   SetColor(0, w, gray);
- //   SetColor(11, w, gray);
- // }
+  // comment out for now - wall sides
+  if (BORDERS) 
+  {
+    for (int w=0;w<24;w++){
+      SetColor(0, w, gray);
+      SetColor(MAX_X, w, gray);
+    }
+  }
 
   delay(200);
 
@@ -236,14 +270,14 @@ void Repaint()
 */
 void DrawHLine(int y, RgbColor color)
 {
-  for (int x = 0; x < 12; x++) {
+  for (int x = 0; x <= MAX_X; x++) {
     SetColor(x, y, color);
   }
 }
 
 void DrawVLine(int x, RgbColor color)
 {
-  for (int y = 0; y < 23; y++) {
+  for (int y = 0; y <= MAX_Y; y++) {
     SetColor(x, y, color);
   }
 }
@@ -256,7 +290,7 @@ void DrawVLine(int x, RgbColor color)
 */
 void SetColor(int x, int y, RgbColor color)
 {
-  if (y < 0 || y > 23 || x < 0 || x > 11) {
+  if (y < 0 || y > MAX_Y || x < 0 || x > MAX_X) {
     // error - invalid input
     return;
   }
@@ -295,10 +329,10 @@ void OneByOne() {
   //Serial.println(x);
 
 
-  if (x < 11) {
+  if (x < MAX_X-1) {
     x++;
   }
-  else if (y < 22) {
+  else if (y < MAX_Y-1) {
     x = 0;
     y++;
   }
@@ -319,14 +353,14 @@ void LineByLine() {
 
   delay(10);
 
-  if (x < 11) {
+  if (x < MAX_X-1) {
     x++;
   }
   else {
     x = 0;
   }
 
-  if (y < 22) {
+  if (y < MAX_Y-1) {
     y++;
   }
   else {
@@ -344,6 +378,7 @@ const int startY = 19;
 int currentPosX = startX;
 int currentPosY = startY;
 
+int loopCount = 0;
 
 bool CollidesAt(int x, int y, int rotation) 
 {
@@ -351,6 +386,12 @@ bool CollidesAt(int x, int y, int rotation)
     uint8_t* p = Tetraminos[currentPiece][rotation][i];
     int px = p[0] + x;
     int py = p[1] + y;
+
+    if (px < TRIM_X || px > MAX_X-TRIM_X || py < TRIM_Y || py > MAX_Y-TRIM_Y) {
+      //Serial.println("wall collision!");
+      return true;
+    }
+/*    
     Serial.print("currentPiece=");
     Serial.println(currentPiece);
     Serial.print("i=");
@@ -359,93 +400,240 @@ bool CollidesAt(int x, int y, int rotation)
     Serial.println(px);
     Serial.print("py=");
     Serial.println(py);
-    
+*/    
     if (Well[py][px] != black) {
-      Serial.print("collision!");
+      //Serial.println("collision!");
       return true;
     }
   }
   return false;
 }
 
-void DrawPoints()
+void ResetGame()
 {
-//  Refresh();
+  // re-initialize the well
+  for (int i=0;i<24;i++){
+    for (int j=0;j<12;j++){
+      Well[i][j] = black;
+    }
+  }
+  Repaint();
+}
 
-  delay(300);
+void FixToWell() 
+{
+  for (int p = 0; p < 4; p++) {
+    int px = currentPosX + Tetraminos[currentPiece][rotation][p][0];
+    int py = currentPosY + Tetraminos[currentPiece][rotation][p][1];
+    Well[py][px] = currentColor;
+  }  
+}
 
-  // check for collision
-  if (currentPosY>0 && !CollidesAt(currentPosX, currentPosY-1, rotation)) {
+void NewPiece()
+{
+  currentPosY = startY;
+  currentPosX = random(1, 7);
+  
+  // pick next piece
+  if (currentPiece < 6) {
+    currentPiece++;
+  }
+  else {
+    currentPiece = 0;
+  }
+  // set rotation to random value
+  rotation = random(0, 3);
+  
+  //picks random color
+  currentColor = TetraminoColors[random(0,7)];
+}
 
+// Move the piece left or right
+void MoveX(int i) 
+{
+  if (!CollidesAt(currentPosX + i, currentPosY, rotation)) {
     // blacken the piece at the current position
     for (int p = 0; p < 4; p++) {
-      //uint8_t point[2] = Tetraminos[currentPiece][rotation][p];
       int px = currentPosX + Tetraminos[currentPiece][rotation][p][0];
       int py = currentPosY + Tetraminos[currentPiece][rotation][p][1];
       SetColor(px, py, black);
     }
 
-    currentPosY--;
+    currentPosX +=i;
+
     // draw new piece at the new position
     for (int p = 0; p < 4; p++) {
-      //        uint8_t point[2] = Tetraminos[currentPiece][rotation][p];
       int px = currentPosX + Tetraminos[currentPiece][rotation][p][0];
       int py = currentPosY + Tetraminos[currentPiece][rotation][p][1];
+      SetColor(px, py, currentColor);
+    }
+  }
+}  
 
-    /*
-            Serial.print("currentPosX=");
-            Serial.println(currentPosX);
-            Serial.print("currentPosY=");
-            Serial.println(currentPosY);
-            Serial.print("p=");
-            Serial.println(p);
+void Rotate()
+{
+  int newRot = 0;
+  if (rotation < 3) {
+    newRot = rotation + 1;
+  }
+  
+  if (!CollidesAt(currentPosX, currentPosY, newRot)) {
+    // blacken the piece at the current position
+    for (int p = 0; p < 4; p++) {
+      int px = currentPosX + Tetraminos[currentPiece][rotation][p][0];
+      int py = currentPosY + Tetraminos[currentPiece][rotation][p][1];
+      SetColor(px, py, black);
+    }
 
+    rotation = newRot;
 
-            Serial.print("X=");
-            Serial.println(px);
-            Serial.print("Y=");
-            Serial.println(py);
-
-            Serial.println("-------------------------");
-    */
+    // draw new piece at the new position
+    for (int p = 0; p < 4; p++) {
+      int px = currentPosX + Tetraminos[currentPiece][rotation][p][0];
+      int py = currentPosY + Tetraminos[currentPiece][rotation][p][1];
       SetColor(px, py, currentColor);
     }
     
+  }
+}
+
+// Move the piece down or up
+void MoveY(int i) 
+{
+  if (!CollidesAt(currentPosX, currentPosY+i, rotation)) {
+    // blacken the piece at the current position
+    for (int p = 0; p < 4; p++) {
+      int px = currentPosX + Tetraminos[currentPiece][rotation][p][0];
+      int py = currentPosY + Tetraminos[currentPiece][rotation][p][1];
+      SetColor(px, py, black);
+    }
+
+    currentPosY +=i;
+
+    // draw new piece at the new position
+    for (int p = 0; p < 4; p++) {
+      int px = currentPosX + Tetraminos[currentPiece][rotation][p][0];
+      int py = currentPosY + Tetraminos[currentPiece][rotation][p][1];
+      SetColor(px, py, currentColor);
+    }
+  }
+}  
+
+  // Clear completed rows from the field and award score according to
+  // the number of simultaneously cleared rows.
+int ClearRows() {
+  boolean gap;
+  int numClears = 0;
+  
+  for (int j = TRIM_Y; j <= MAX_Y-TRIM_Y; j++) {
+    gap = false;
+    for (int i = TRIM_X; i <= MAX_X-TRIM_X; i++) {
+      if (Well[j][i] == black) {
+        gap = true;
+        break;
+      }
+    }
+    if (!gap) {
+      DeleteRow(j);
+      j -= 1;
+      numClears += 1;
+    }
+  }
+  /*
+  switch (numClears) {
+  case 1:
+    score += 100;
+    break;
+  case 2:
+    score += 300;
+    break;
+  case 3:
+    score += 500;
+    break;
+  case 4:
+    score += 800;
+    break;
+  }
+  */
+
+  return numClears;
+}
+
+void DeleteRow(int row) {
+  for (int j = row; j < MAX_Y-TRIM_Y; j++) {
+    for (int i = TRIM_X; i <= MAX_X-TRIM_X; i++) {
+      Well[j][i] = Well[j+1][i];
+    }
+  }
+}
+
+
+void DrawPoints()
+{
+  if (myReceiver.getResults()) {
+    myDecoder.decode();           //Decode it
+    myDecoder.dumpResults(false);  //Now print results. Use false for less detail
+
+    
+    if (myDecoder.value == 0xFFFFFFFF) {
+        // do nothing - this is a filler value
+      } 
+      else if (myDecoder.value == RMT_POWER) {
+        ResetGame();
+        NewPiece();
+      }     
+      else if (myDecoder.value == RMT_FFLEFT) {
+        MoveX(-1);
+      }     
+      else if (myDecoder.value == RMT_FFRIGHT) {
+        MoveX(1);
+      }     
+      else if (myDecoder.value == RMT_ROTATE) {
+        Rotate();
+      }     
+
+      myReceiver.enableIRIn();      //Restart receiver
+  }
+
+
+  //Serial.println(loopCount++);
+  //Serial.print("currentPosY=");
+  //Serial.println(currentPosY);
+
+  // check for collision
+  if (!CollidesAt(currentPosX, currentPosY-1, rotation)) {
+    //Serial.println("move");
+    MoveY(-1);    
     Refresh();
   }
   else {
-    // fix to wall
-    for (int p = 0; p < 4; p++) {
-      //        uint8_t point[2] = Tetraminos[currentPiece][rotation][p];
-      int px = currentPosX + Tetraminos[currentPiece][rotation][p][0];
-      int py = currentPosY + Tetraminos[currentPiece][rotation][p][1];
-      Well[py][px] = currentColor;
-    }
+    //Serial.println("next");
     
-    
-    // start with a new piece
-    currentPosY = startY;
-    currentPosX = random(1, 7);
-    
-    // pick next piece
-    if (currentPiece < 6) {
-      currentPiece++;
+    if (currentPosY == startY) {
+      // we are stuck on new piece!!! game over
+      // for now we will do reset
+      ResetGame();
     }
     else {
-      currentPiece = 0;
-    }
-    // set rotation to random value
-    rotation = random(0, 3);
     
-    //picks random color
-    currentColor = TetraminoColors[random(0,7)];
+      // fix to well
+      FixToWell();
+  
+      // clear rows
+      if (ClearRows() > 0) {
+        Repaint();
+      }
+      
+      // start with a new piece
+      NewPiece();
+    }
   }
-
+  
 }
 
 void loop()
 {
-  //LineByLine();
+  delay(TETRIS_DELAY);
   DrawPoints();
 
 }

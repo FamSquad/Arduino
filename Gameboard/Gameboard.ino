@@ -6,7 +6,7 @@ const uint16_t PixelCount = 150;
 const uint8_t PixelPin1 = 13;  // make sure to set this to the correct pin, ignored for Esp8266
 const uint8_t PixelPin2 = 12;  // make sure to set this to the correct pin, ignored for Esp8266
 
-#define BORDERS false
+#define BORDERS true
 
 #define MAX_X 11
 #define MAX_Y 23
@@ -36,8 +36,7 @@ NeoPixelBus<NeoGrbFeature, Neo800KbpsMethod> strip2(PixelCount, PixelPin2);
 IRrecv myReceiver(10);
 
 //Create a decoder object 
-IRdecode myDecoder;   
-
+IRdecode myDecoder; 
 
 // define helpful colors
 RgbColor red(colorSaturation, 0, 0);
@@ -48,7 +47,7 @@ RgbColor cyan(0, colorHalf, colorHalf);
 RgbColor orange(colorSaturation, colorHalf, 0);
 RgbColor yellow(colorHalf, colorHalf, 0);
 RgbColor magenta(colorSaturation, 0, colorSaturation);
-RgbColor gray(8);
+RgbColor gray(16);
 RgbColor white(colorSaturation);
 RgbColor black(0);
 
@@ -167,26 +166,12 @@ void setup()
   strip1.Begin();
   strip2.Begin();
 
-
-  //initialize the well
-  for (int i=0;i<24;i++){
-    for (int j=0;j<12;j++){
-      Well[i][j] = black;
-    }
-    if (BORDERS) {
-      Well[i][0] = gray;
-      Well[i][MAX_X] = gray;
-    }
-  }
-
   delay(200);
-
-  strip1.Show();
-  strip2.Show();
 
   Serial.println();
   Serial.println(F("Running..."));
 
+  ResetGame();
 }
 
 void Repaint() 
@@ -346,11 +331,16 @@ bool CollidesAt(int x, int y, int rotation)
 void ResetGame()
 {
   // re-initialize the well
-  for (int i=0;i<24;i++){
-    for (int j=0;j<12;j++){
+  for (int i=0;i<=MAX_Y;i++){
+    for (int j=0;j<=MAX_X;j++){
       Well[i][j] = black;
     }
+    if (BORDERS) {
+      Well[i][0] = gray;
+      Well[i][MAX_X] = gray;
+    }
   }
+
   Repaint();
 }
 
@@ -573,7 +563,7 @@ void loop()
     myDecoder.dumpResults(false);  //Now print results. Use false for less detail
 
     unsigned long receivedCommand = myDecoder.value;
-    if (receivedCommand == 0xFFFFFFFF && lastCommand != 0xFFFFFFFF) {
+    if (receivedCommand == 0xFFFFFFFF && (lastCommand == RMT_FFLEFT || lastCommand == RMT_FFRIGHT)) {
       // repeat last command
       receivedCommand = lastCommand;
     } else {
